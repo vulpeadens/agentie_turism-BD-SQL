@@ -1,0 +1,111 @@
+CREATE database bd_curs2;
+USE bd_curs2;
+
+
+-- produs: id(PK), nume, descriere, pret, disponibil, id_caregorie(FK)
+CREATE table produs(
+id INT NOT NULL auto_increment,
+nume VARCHAR(50) NOT NULL,
+descriere TEXT,
+pret DECIMAL(7, 2) NOT NULL, -- 99999.99
+disponibil BOOLEAN NOT NULL,
+PRIMARY KEY(id)
+);
+
+-- categorie: id, denumire
+CREATE TABLE categorie(
+id TINYINT NOT NULL PRIMARY KEY auto_increment,
+denumire VARCHAR(50) NOT NULL
+);
+
+ALTER TABLE produs
+ADD COLUMN id_categorie TINYINT NOT NULL
+AFTER descriere;
+
+ALTER TABLE produs
+ADD CONSTRAINT produs_fk1
+FOREIGN KEY(id_categorie) REFERENCES categorie(id);
+
+-- client: id(PK), nume, adresa, data_nastere
+CREATE TABLE client(
+id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+nume VARCHAR(50) NOT NULL,
+adresa TEXT,
+data_nastere DATE NOT NULL
+);
+
+
+-- comanda: id(PK), data, tip_plata, id_client
+CREATE TABLE comanda(
+id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+data DATE NOT NULL,
+tip_plata ENUM('cash', 'card', 'transfer'),
+id_client INT NOT NULL,
+FOREIGN KEY(id_client) REFERENCES client(id)
+);
+
+
+-- factura: id_produs(FK), id_comanda(FK)
+CREATE TABLE factura(
+id_produs INT NOT NULL,
+id_comanda INT NOT NULL,
+FOREIGN KEY(id_produs) REFERENCES produs(id),
+FOREIGN KEY(id_comanda) REFERENCES comanda(id)
+);
+
+ALTER TABLE factura
+ADD PRIMARY KEY factura_pk(id_produs ASC, id_comanda ASC);
+
+-- se adaugă NULL pentru id, pentru a se aplica AUTO_INCREMENTUL
+INSERT INTO produs VALUES(NULL, 'laptop', 3500, 'laptop lenovo cu 8Gb RAM si 512Gb SSD');
+
+-- adăugarea unei înregistrări, specificând valori doar pentru anumite atribute
+INSERT INTO produs(denumire, pret) VALUES('laptop', 3500);
+
+-- adăugarea mai multor înregistrări, specificând valori pentru toate atributele
+INSERT INTO produs VALUES
+(NULL, 'laptop', 3500, 'laptop lenovo cu 8Gb RAM si 512Gb SSD'),
+(NULL, 'casti', 150, 'casti wireless');
+
+-- adăugarea mai multor înregistrări, specificând valori doar pentru unele atribute
+INSERT INTO produs(denumire, pret)
+VALUES
+('laptop', 3500),
+('casti', 150);
+
+-- adăugarea unei înregistrări, folosind instrucțiunea SET
+INSERT INTO produs
+SET denumire = 'laptop', pret = 3500;
+
+-- adăugarea unei înregistrări, doar cu valori default/NULL
+INSERT INTO produs VALUES();
+
+-- update general
+UPDATE produs SET reducere = 10;
+UPDATE produs SET pret = pret * 0.90; -- se aplică o reducere de 10% pentru toate produsele
+
+-- update cu condiții
+UPDATE produs SET pret = pret * 0.90 WHERE denumire = 'laptop';
+UPDATE produs SET nume = 'laptop', descriere = 'laptop lenovo' WHERE id = 5;
+
+-- ștergerea tuturor înregistrărilor
+DELETE FROM produs;
+ALTER TABLE produs AUTO_INCREMENT = 1; -- resetare auto increment, pentru ca noile înregistrări să înceapă iar de la 1
+
+-- ștergerea unor anumite înregistrări
+DELETE FROM produs WHERE denumire = 'laptop'; -- nu se știe câte înregistrări vor fi șterse, pentru că nu se pune condiția după atribut unic
+DELETE FROM produs WHERE id = 2; -- se șterge o singură înregistrare, id-ul cu valoarea 2 nu va mai fi refolosit automat
+
+-- selectarea unor anumite atribute
+SELECT denumire, pret FROM produs;
+
+-- asocierea unui alias pentru atribute - dacă se dorește ca la afișare să aibă un alt nume
+SELECT denumire AS nume_produs, pret `pret recomandat`, descriere FROM produs; -- dacă se omite AS se pune doar un spațiu între atribut și alias, iar dacă alias-ul conține spații, acesta se pune între backticks ``(apostroafe înclinate)
+
+SELECT denumire, pret
+FROM produs
+WHERE denumire LIKE '%laptop%' AND pret <= 5000
+ORDER BY pret DESC, denumire
+LIMIT 10;
+
+
