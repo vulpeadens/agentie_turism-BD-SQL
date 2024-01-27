@@ -1,0 +1,294 @@
+
+CREATE DATABASE agentie_turism;
+USE agentie_turism;
+
+-- client: id(PK), nume, prenume, email, data_nastere
+CREATE TABLE client(
+id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+nume VARCHAR(50) NOT NULL,
+prenume VARCHAR(50) NOT NULL,
+email VARCHAR(100) NULL,
+data_nastere DATE NOT NULL
+);
+
+-- sejur: id(PK), denumire, tip, data_inceput, data_sfarsit, durata, locatie, pret_persoana, locuri_disponibile
+CREATE TABLE sejur(
+id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+denumire VARCHAR(100) NOT NULL,
+tip ENUM('CIRCUIT', 'CITY BREAK', 'SABATOARE', 'EXCURSIE'),
+data_inceput DATE NOT NULL,
+data_sfarsit DATE NOT NULL,
+durata TINYINT NOT NULL,
+locatie VARCHAR(200) NOT NULL,
+pret_persoana SMALLINT NOT NULL,
+locuri_disponibile TINYINT NOT NULL
+);
+
+-- ghid: id(PK), nume, prenume, nivel_experinta, ranting
+CREATE TABLE ghid(
+id TINYINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+nume VARCHAR(50) NOT NULL,
+prenume VARCHAR(50) NOT NULL,
+nivel_experienta ENUM('INCEPATOR', 'MEDIU', 'AVANSAT', 'EXPERT') NOT NULL,
+rating TINYINT NULL
+);
+
+-- pachet: id(PK), data_achizitie, masa, transport, nr_persoane, discount, asigurare, pret_final, id_client(PK), id_sejur(FK)
+CREATE TABLE pachet(
+id INT NOT NULL PRIMARY KEY auto_increment,
+data_achizitie DATE NOT NULL,
+masa ENUM('MIC DEJUN', 'DEMIPENSIUNE', 'PENSIUNE COMPLETA', 'ALL INCLUSIVE') NULL,
+transport ENUM('INDIVIDUAL', 'AVION', 'AUTOCAR') NOT NULL,
+nr_persoane TINYINT NOT NULL,
+discount TINYINT,
+asigurare BOOLEAN default 0,
+pret_final DECIMAL NULL,
+id_client INT NOT NULL,
+id_sejur INT NOT NULL,
+FOREIGN KEY(id_client) REFERENCES client(id),
+FOREIGN KEY(id_sejur) REFERENCES sejur(id)
+);
+
+-- plata: id(PK), tip, avans, finalizata, termen, id_pachet(FK)
+CREATE TABLE plata(
+id INT NOT NULL PRIMARY KEY auto_increment,
+tip ENUM('CASH', 'CARD', 'TRANSFER') NOT NULL,
+avans TINYINT NOT NULL,
+finalizata BOOLEAN NOT NULL,
+termen DATE NULL,
+id_pachet INT NOT NULL,
+FOREIGN KEY(id_pachet) REFERENCES pachet(id)
+);
+
+-- adaug id_ghid in sejur si il setez ca FK
+ALTER TABLE sejur
+ADD COLUMN id_ghid TINYINT NULL;
+
+ALTER TABLE sejur
+ADD CONSTRAINT fk_ghid
+FOREIGN KEY(id_ghid) REFERENCES ghid(id);
+
+-- ghid: rating ar trebui sa fie decimal
+ALTER TABLE ghid MODIFY COLUMN rating DECIMAL(3, 2);
+
+-- plata: schimbam numele coloanei termen
+ALTER TABLE plata CHANGE termen data_limita DATE;
+
+-- sejur: stergem coloana durata
+ALTER TABLE sejur DROP column durata;
+
+INSERT INTO ghid (nume, prenume, nivel_experienta, rating) VALUES("Ion", "dan","INCEPATOR","4.8"),("Vasile", "butoi","MEDIU","4.95"),("Mari", "cazan","AVANSAT","4.73"),("Leana", "cap","EXPERT","4.81");
+
+
+
+
+
+
+
+
+
+
+UPDATE pachet INNER JOIN sejur ON pachet.id_sejur = sejur.id SET pret_final = pret_persoana * nr_persoana * ((100 - discount) / 100);
+
+UPDATE plata INNER JOIN pachet ON plata.id.pachet = pachet.id INNER JOIN sejur ON pachet.id_sejur = sejur.id SET data_limita = data_inceput - INTERVAL 2 WEEk;
+
+-- completam automat adressele de email
+-- prenume_nume1999@gmail.com
+UPDATE client SET email = CONCAT(LOWER(prenume), '_', LOWER(nume), YEAR(data_nastere), '@gmail.com');
+
+
+
+-- totate sejururile
+SELECT * FROM sejur;
+
+
+-- toate sejururile cu pret per persoana mai mic de 800
+SELECT *
+FROM sejur
+WHERE pret_persoana < 700;
+
+-- pachetele cu pret intre 1200 si 3000
+SELECT * s
+FROM pachet
+WHERE pret_final >= 1200 AND pret_final <= 3000;
+
+SELECT *
+FROM pachet
+WHERE pret_final BETWEEN 1200 AND 3000;
+
+-- toate city break-urile ordonate dupa pret
+SELECT *
+FROM sejur
+WHERE tip = 'CITY BREAK'
+ORDER BY pret_persoana;
+
+SELECT *
+FROM sejur
+WHERE tip = 'CITY BREAK'
+ORDER BY pret_persoana, denumire;
+
+-- rating min, max, avg, pt ghizi
+SELECT
+MIN(rating) rating_minim,
+MAX(rating) raring_maxim,
+AVG(rating) rating_mediu
+FROM ghid;
+
+-- numele sejurului si durata lui durata zile(datediff)
+SELECT denumire, datediff(data_sfarsit, data_inceput) durata_zile
+FROM sejur;
+
+-- numele sejurului si durata lui durata zile(datediff)
+SELECT denumire, datediff(data_sfarsit, data_inceput) durata_zile
+FROM sejur
+ORDER BY durata_zile;
+
+
+-- sejururi cu weekend in denumire
+SELECT *
+FROM sejur
+WHERE denumire LIKE '%Weekend%';
+
+-- cel mai scump sejur/al doilea cel mai scump
+SELECT *
+FROM sejur
+ORDER BY pret_persoana DESC
+LIMIT 1;
+
+
+-- cel mai scump sejur/al doilea cel mai scump
+SELECT *
+FROM sejur
+ORDER BY pret_persoana DESC
+LIMIT 1, 1;
+
+
+-- numarul de plati finalizate/nefinalizate
+SELECT finalizata, COUNT(*) nr_plati
+FROM plata
+GROUP BY finalizata;
+
+-- numarul de plati finalizate/nefinalizate
+SELECT IF(finalizata = 1, 'plata finalizata', 'plata nefinalizata') finalizata, COUNT(*) nr_plati
+FROM plata
+GROUP BY finalizata;
+
+-- pretul total al pachetelor, grupat dupa transport
+SELECT transport, SUM(pret_final)
+FROM pachet
+GROUP BY transport;
+
+-- numele sejururilor, grupate dupa tip
+SELECT tip, GROUP_CONCAT(denumire) lista_sejururi
+FROM sejur
+GROUP BY tip;
+
+-- numarul sejururilor, grupate dupa tip, doar daca sunt mai mult de 3
+SELECT tip, COUNT(*) nr
+FROM sejur
+GROUP BY tip
+HAVING nr > 3;
+
+-- numarul sejururilor, grupate dupa tip, cu pretul mai mare de 400
+SELECT tip, COUNT(*)
+FROM sejur
+WHERE pret_persoana > 400
+GROUP BY tip;
+
+
+-- numarul sejururilor, grupate dupa tip, doar daca sunt mai mult de 2 si anul inceperii este 2021
+SELECT tip, COUNT(*) nr
+FROM sejur
+WHERE YEAR(data_inceput) = 2021
+GROUP BY tip
+HAVING nr > 2;
+
+-- pretul mediu pentru excursie si circuit, dar numai daca este peste 850
+SELECT tip, AVG(pret_persoana) pret_mediu
+FROM sejur
+WHERE tip IN ('EXCURSIE', 'CIRCUIT')
+GROUP BY tip
+HAVING pret_mediu > 850;
+
+-- data achizitie pachet, masa, transport si numele sjurului
+SELECT data_achizitie, masa, transport, denumire
+FROM pachet JOIN sejur
+ON pachet.id_sejur = sejur.id;
+
+-- numele sejurului, data inceput, data sfarsit si numele ghidului
+SELECT denumire, data_inceput, data_sfarsit, CONCAT(nume, ' ', prenume) ghid
+FROM sejur JOIN ghid
+ON sejur.id_ghid = ghid.id;
+
+-- id pachet, data achizitie a pachetului si termenul limita al platii
+SELECT pachet.id, data_achizitie, data_limita
+FROM pachet, plata
+WHERE pachet.id = plata.id_pachet;
+
+-- numele client, nume sejur, masa, transport, pentru pachetele cu cel putin 3 persoane
+SELECT CONCAT(nume, ' ', prenume) client, denumire, masa, transport
+FROM client JOIN pachet ON client.id = pachet.id_client
+JOIN sejur ON sejur.id = pachet.id_sejur
+WHERE nr_persoane >= 3;
+
+-- nume client, nume sejur, nume ghid pentru city breaks
+SELECT CONCAT(client.nume, ' ', client.prenume) client, denumire, CONCAT(ghid.nume, ' ', ghid.prenume) ghid
+FROM client, sejur, pachet, ghid
+WHERE
+client.id = pachet.id_client AND
+sejur.id = pachet.id_sejur AND
+ghid.id = sejur.id_ghid AND
+tip = 'CITY BREAK';
+
+-- numele client, care pachete a achizitionat
+SELECT concat(client.nume, ' ', client.prenume) client, COUNT(*)
+FROM client, pachet
+WHERE client.id = pachet.id_client
+GROUP BY client;
+
+SELECT concat(client.nume, ' ', client.prenume) client, COUNT(*) nr
+FROM client, pachet
+WHERE client.id = pachet.id_client
+GROUP BY client
+ORDER BY nr DESC;
+
+SELECT denumire, group_concat(CONCAT(client.nume, ' ', client.prenume)) lista_clienti
+FROM sejur, client, pachet
+WHERE 
+sejur.id = pachet.id_sejur AND
+client.id = pachet.id_client
+GROUP BY denumire;
+
+-- nume sejur si o lista cu numele clientilor
+SELECT denumire, GROUP_CONCAT(CONCAT(client.nume, ' ', client.prenume)) lista_clienti
+FROM sejur, client, pachet
+WHERE
+sejur.id = pachet.id_sejur AND 
+client.id = pachet.id_client
+GROUP BY denumire; 
+
+-- sejururile de tip city break care au fost achizitionate de cel putin 2 ori
+SELECT denumire, COUNT(*) nr
+FROM sejur JOIN pachet
+ON sejur.id = pachet.id_sejur
+WHERE tip = 'CITY BREAK'
+GROUP BY denumire
+HAVING nr >= 2;
+
+-- nume ghid si lista de sejururi, daca exista
+SELECT CONCAT(nume, ' ', prenume) ghid, GROUP_CONCAT(denumire)
+FROM sejur RIGHT JOIN ghid
+ON sejur.id_ghid = ghid.id
+GROUP BY ghid;
+
+-- ghizi fara sejururi
+SELECT CONCAT(nume, ' ', prenume) ghid
+FROM sejur RIGHT JOIN ghid
+ON sejur.id_ghid = ghid.id
+WHERE denumire IS NULL;
+
+-- sejururile care nu au fost achizitionate niciodata
+SELECT denumire
+FROM sejur LEFT JOIN pachet
+ON sejur.id = pachet.id_sejur
+WHERE pachet.id IS NULL;

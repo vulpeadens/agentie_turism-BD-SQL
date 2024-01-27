@@ -1,0 +1,93 @@
+
+CREATE DATABASE agentie_turism;
+USE agentie_turism;
+
+-- client: id(PK), nume, prenume, email, data_nastere
+CREATE TABLE client(
+id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+nume VARCHAR(50) NOT NULL,
+prenume VARCHAR(50) NOT NULL,
+email VARCHAR(100) NULL,
+data_nastere DATE NOT NULL
+);
+
+-- sejur: id(PK), denumire, tip, data_inceput, data_sfarsit, durata, locatie, pret_persoana, locuri_disponibile
+CREATE TABLE sejur(
+id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+denumire VARCHAR(100) NOT NULL,
+tip ENUM('CIRCUIT', 'CITY BREAK', 'SABATOARE', 'EXCURSIE'),
+data_inceput DATE NOT NULL,
+data_sfarsit DATE NOT NULL,
+durata TINYINT NOT NULL,
+locatie VARCHAR(200) NOT NULL,
+pret_persoana SMALLINT NOT NULL,
+locuri_disponibile TINYINT NOT NULL
+);
+
+-- ghid: id(PK), nume, prenume, nivel_experinta, ranting
+CREATE TABLE ghid(
+id TINYINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+nume VARCHAR(50) NOT NULL,
+prenume VARCHAR(50) NOT NULL,
+nivel_experienta ENUM('INCEPATOR', 'MEDIU', 'AVANSAT', 'EXPERT') NOT NULL,
+rating TINYINT NULL
+);
+
+-- pachet: id(PK), data_achizitie, masa, transport, nr_persoane, discount, asigurare, pret_final, id_client(PK), id_sejur(FK)
+CREATE TABLE pachet(
+id INT NOT NULL PRIMARY KEY auto_increment,
+data_achizitie DATE NOT NULL,
+masa ENUM('MIC DEJUN', 'DEMIPENSIUNE', 'PENSIUNE COMPLETA', 'ALL INCLUSIVE') NULL,
+transport ENUM('INDIVIDUAL', 'AVION', 'AUTOCAR') NOT NULL,
+nr_persoane TINYINT NOT NULL,
+discount TINYINT,
+asigurare BOOLEAN default 0,
+pret_final DECIMAL NULL,
+id_client INT NOT NULL,
+id_sejur INT NOT NULL,
+FOREIGN KEY(id_client) REFERENCES client(id),
+FOREIGN KEY(id_sejur) REFERENCES sejur(id)
+);
+
+-- plata: id(PK), tip, avans, finalizata, termen, id_pachet(FK)
+CREATE TABLE plata(
+id INT NOT NULL PRIMARY KEY auto_increment,
+tip ENUM('CASH', 'CARD', 'TRANSFER') NOT NULL,
+avans TINYINT NOT NULL,
+finalizata BOOLEAN NOT NULL,
+termen DATE NULL,
+id_pachet INT NOT NULL,
+FOREIGN KEY(id_pachet) REFERENCES pachet(id)
+);
+
+-- adaug id_ghid in sejur si il setez ca FK
+ALTER TABLE sejur
+ADD COLUMN id_ghid TINYINT NULL;
+
+ALTER TABLE sejur
+ADD CONSTRAINT fk_ghid
+FOREIGN KEY(id_ghid) REFERENCES ghid(id);
+
+-- ghid: rating ar trebui sa fie decimal
+ALTER TABLE ghid MODIFY COLUMN rating DECIMAL(3, 2);
+
+-- plata: schimbam numele coloanei termen
+ALTER TABLE plata CHANGE termen data_limita DATE;
+
+-- sejur: stergem coloana durata
+ALTER TABLE sejur DROP column durata;
+
+INSERT INTO ghid (nume, prenume, nivel_experienta, rating) VALUES("Ion", "dan","INCEPATOR","4.8"),("Vasile", "butoi","MEDIU","4.95"),("Mari", "cazan","AVANSAT","4.73"),("Leana", "cap","EXPERT","4.81");
+
+
+
+
+
+
+
+
+
+
+UPDATE pachet INNER JOIN sejur ON pachet.id_sejur = sejur.id SET pret_final = pret_persoana * nr_persoana * ((100 - discount) / 100);
+
+UPDATE plata INNER JOIN pachet ON plata.id.pachet = pachet.id INNER JOIN sejur ON pachet.id_sejur = sejur.id SET data_limita = data_inceput - INTERVAL 2 WEEk;
