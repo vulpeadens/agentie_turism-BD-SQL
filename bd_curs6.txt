@@ -1,0 +1,108 @@
+ 
+  -- subquery-uri scalare
+  -- angajatii care lucreaza in acelasi dept ca stancu iulia
+  -- pas 1 - determinam id_departament pentru iulia 
+  SELECT id_departament FROM angajatii WHERE nume = 'Stancu' AND prenume = 'iulia';
+  
+  -- pas 2 - angajatii ci id_dept de la pasul 1
+  SELECT *
+  FROM angajat
+  WHERE id_departament = (SELECT id_departament FROM angajatii WHERE nume = 'Stancu' AND prenume = 'iulia');
+  
+  -- angajatii cu acelasi post ca angajatul cu id_ul 10
+  --pas 1 - id_post pt angataj cu id = 10;
+  SELECT id_post FROM angajat WHERE id = 10;
+  
+  -- pas 2
+  SELECT * 
+  FROM angajat
+  WHERE id_post = (SELECT id_post FROM angajat WHERE id = 10
+  
+   SELECT * 
+  FROM angajat
+  WHERE id_post = (SELECT id_post FROM angajat WHERE id = 10)
+  AND data_demisie IS NULL;
+  
+  -- angajatii cu salariu mai mare decat salariu mediu din dept 1
+  SELECT *
+  FROM angajat
+  WHERE salariu > (SELECT AVG(salariu) FROM angajat WHERE id_departament = 1);
+  
+  -- subquery de tip lista
+  -- coloana
+  -- persoana angajat in acelasi an si dept ca iulia stancu
+  SELECT *
+  FROM angajat
+  WHERE (YEAR(data_angajare), id_departament) = (SELECT YEAR(data_angajare), id_departament
+													FROM angajat WHERE nume = 'Stancu' AND prenume = 'Iulia');
+													
+													
+  -- coloana
+  -- denumiri posturi pentru care exista angajat
+  -- join
+  SELECT DISTINCT denumire
+  FROM angajat, post
+  WHERE angajat.id_post = post.id;
+  
+  -- subquery
+  -- id_ uri posturi ocupate
+  SELECT DISTINCT id_post FROM angajat;
+  -- posturile ocupate
+  SELECT denumire
+  FROM post
+  WHERE id IN (SELECT DISTINCT id_post FROM angajat);
+  
+  -- tabel
+  -- nume, prenume, denumire post pt angajatii din dept 1
+  -- join
+  SELECT nume, prenume, denumire
+  FROM angajat, post 
+  WHERE angajat.id_post = post.id;
+  AND id_departament = 1;
+  
+  
+  SELECT  nume, prenume, denumire
+  FROM (SELECT * FROM angajat WHERE id_departament = 1) ang_dept_1 JOIN post
+  ON ang_dept_1.id_post = post.id;
+  
+  -- view-uri
+  -- fost angajat
+  CREATE VIEW fost_angajat AS
+  SELECT id, nume, prenume, data_angajare, data_demisie
+  FROM angajat
+  WHERE data_demisie IS NOT NULL;
+  
+  
+  SELECT * FROM fost_angajat;
+  UPDATE fost_angajat SET data_demisie = NULL WHERE id = 3;
+  
+  SELECT * FROM angajat;
+  UPDATE angajat SET data_demisie = CURDATE() WHERE id = 3;
+  
+  INSERT INTO fost_angajat VALUES(NULL, 'Popescu', 'Andrei', 20201029, 20201105);
+  
+  -- info angajat: nume, prenume, dept, post
+  CREATE VIEW info_angajat AS
+  SELECT nume, prenume, departament.denumire dapartament, post.denumire post
+  FROM angajat, departament, post
+  WHERE
+  angajat.id_departament = departament.id AND
+  angajat.id_post = post.id;
+  
+  CREATE OR REPLACE VIEW info_angajat AS
+  SELECT nume, prenume, departament.denumire departament, post.denumire post
+  FROM angajat, departament, post
+  WHERE
+  angajat.id_departament = departament.id AND
+  angajat.id_post = post.id;
+  
+  SELECT * FROM info_angajat;
+  
+  UPDATE info_angajat SET departament = 'RnD' WHERE nume = 'Rusu';
+  
+  DELETE FROM info_angajat WHERE nume = 'Rusu';
+  
+  INSERT INTO info_angajat(nume, prenume, departament, post)
+  VALUES('Dinu', 'Ana', 'Dev', 'Tester');
+  
+  

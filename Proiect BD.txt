@@ -292,3 +292,440 @@ SELECT denumire
 FROM sejur LEFT JOIN pachet
 ON sejur.id = pachet.id_sejur
 WHERE pachet.id IS NULL;
+
+-- sejururile cu acelasi tip ca 4
+SELECT *
+ FROM sejur
+ WHERE tip = (SELECT tip FROM sejur WHERE id = 4);
+
+-- sejururile cu pretul mai mare decat pret mediu
+SELECT *
+FROM sejur
+WHERE pret_persoana > (SELECT AVG(pret_persoana) FROM sejur);
+
+-- sejururile cu acelasi tip si data inceput ca cel cu id-ul 2
+SELECT 
+FROM sejur
+WHERE (tip, data_inceput) = (SELECT, tip, data_inceput FROM sejur WHERE id = 2);
+
+-- pachetele cu acelasi tip de transport si nr de persoane ca 5
+SELECT * 
+FROM pachet
+WHERE (transport, nr_persoane) = (SELECT transport, nr_persoane FROM pachet WHERE id = 5); --lista
+
+-- ghizii pentru circuite
+SELECT *
+FROM ghid
+WHERE id IN (SELECT id_ghid FROM sejur WHERE tip = 'CIRCUIT'); 
+
+-- pachetele de tip city BREAK
+SELECT *
+FROM pachet
+WHERE id_sejur IN (SELECT id FROM sejur WHERE tip = 'CITY BREAK');
+
+-- denumirea si masa pentru pachetele cu excursii
+-- tabela
+SELECT denumire, masa
+FROM pachet JOIN (SELECT id, denumire FROM sejur WHERE tip = 'EXCURSIE') excursie
+ON pachet.id_sejur = excursie.id;
+
+-- detalii sejururi italia: locatie, data inceput, data sfarsit, pret_persoana
+-- VIEW
+CREATE VIEW sejur_italia AS
+SELECT locatie, data_inceput, data_sfarsit, pret_persoana
+FROM sejur
+WHERE locatie LIKE '%Italia%';
+
+SELECT * FROM sejur_italia;
+
+-- nume client, denumire pachet, data inceput, pret, tip plata
+CREATE VIEW detalii_comanda AS
+SELECT nume, prenume, denumire, data_inceput, data_sfarsit, pret_final, plata.tip tip_plata
+FROM client, sejur, pachet, plata
+WHERE
+client.id = pachet.id_client AND
+sejur.id = pachet.id_sejur AND
+pachet.id = plata.id_pachet;
+
+SELECT * FROM detalii_comanda;
+
+-- detalii pachet:locatie, pret, concatenate
+ DELIMITER //
+ CREATE FUNCTION detalii_pachet(id INT0 RETURN VARCHAR(200)
+ BEGIN
+	DECLARE resultat VARCHAR(200);
+	SELECT CONCAT(locatie, ': ', pret_final) INTO rezultat
+	FROM sejur JOIN pachet
+	ON sejur.id = pachet.id_sejur
+	WHERE pachet.id = id;
+	
+	RETURN rezultat;
+END;
+//
+DELIMITER ;
+
+SELECT detalii_pachet(1);
+
+-- calculeaza discount: 5% daca a luat mai mult de 3 pachete+10%daca il ia de ziua lui
+DELIMITER //
+CREATE FUNCTION calculeaza_discount(id_pachet INT) RETURN TINYINT
+BEGIN
+	DECLARE discount TINYINT DEFAULT 0;
+    DECLARE nr_pachete TINYINT;
+    DECLARE zi_nastere INT;
+    DECLARE luna_nastere INT;
+	
+	SELECT COUNT(*) INTO nr_pachete
+    FROM pachet
+    WHERE id_client = (SELECT id_client FROM pachet WHERE id = id_pachet);
+	
+	SELECT DAY(data_nastere), MONTH(data_nastere) INTO zi_nastere, luna_nastere
+    FROM client
+    WHERE id = (SELECT id_client FROM pachet WHERE id = id_pachet);
+	
+	IF nr_pachete > 3 THEN
+		SET discount = discount + 5;
+	END IF;
+	
+	IF DAY(CURDATE()) = zi_nastere AND MONTH(CURDATE()) = luna_nastere THEN
+		SET discount = discount + 10;
+	END IF;
+	
+	RETURN discount;
+END;
+//
+DELIMITER
+
+
+SELECT calculeaza_discount();
+SELECT calculeaza_discount(1);
+SELECT calculeaza_discount(17);
+-- pt un pachet, detalii plata: nume client, nume sejur, daca s-a facut plata integral sub forma de mesaj (gigel a platit pentru sejur integral//avans x%)
+DELIMITER //
+CREATE FUNCTION mesaj_plata(id_pachet INT) RETURNS VARCHAR(500)
+BEGIN
+	DECLARE rezultat VARCHAR(500);
+    DECLARE nume_client VARCHAR(100);
+    DECLARE avans TINYINT;
+    DECLARE sejur VARCHAR(50);
+    
+    SELECT CONCAT(nume, ' ', prenume), plata.avans, denumire INTO nume_client, avans, sejur
+    FROM client, pachet, sejur, plata
+    WHERE
+    client.id = pachet.id_client AND
+    sejur.id = pachet.id_sejur AND
+    pachet.id = plata.id_pachet AND
+    pachet.id = id_pachet;
+    
+    IF avans = 100 THEN
+		SET rezultat = CONCAT_WS(' ', nume_client, 'a platit pentru', sejur, 'suma integrala');
+	ELSE
+		SET rezultat = CONCAT_WS(' ', nume_client, 'a platit pentru', sejur, avans, '%');
+	END IF;
+    
+    RETURN rezultat;
+END;
+//
+DELIMITER ;
+
+SELECT mesaj_plata(1);
+SELECT mesaj_plata(2);
+SELECT mesaj_plata(7);
+
+
+-- detalii pachet: nume client, locatie, data inceput, pret 
+DELIMITER //
+CREATE PROCEDURE detalii_pachet(IN id_pachet INT)
+BEGIN
+	SELECT CONCAT(nume, ' ', prenume) client, locatie, data_inceput, pret_final
+    FROM 
+    client JOIN pachet ON client.id = pachet.id_client
+    JOIN sejur ON sejur.id = pachet.id_sejur
+    WHERE pachet.id = id_pachet; 
+END;
+//
+DELIMITER ;
+
+CALL detalii_pachet(7);
+
+-- actualizeaza pret: pret_persoana*nr_persoane + 200*nr_persoane daca e all inclusive - 50*nr_persoane daca ee transport individual, 
+	-- la care aplicam si disocunt
+	DELIMITER //
+CREATE PROCEDURE actualizeaza_pret(IN id_pachet INT)
+BEGIN
+	DECLARE pret_persoana INT;
+    DECLARE nr_persoane TINYINT;
+    DECLARE masa VARCHAR(50);
+    DECLARE transport VARCHAR(50);
+    DECLARE pret INT;
+    DECLARE discount TINYINT;
+    
+    SELECT sejur.pret_persoana, pachet.nr_persoane, pachet.masa, pachet.transport, sejur.pret_persoana*pachet.nr_persoane, pachet.discount
+    INTO pret_persoana, nr_persoane,masa, transport, pret, discount
+    FROM pachet JOIN sejur ON pachet.id_sejur = sejur.id
+    WHERE pachet.id = id_pachet;
+    
+    IF masa = 'ALL INCLUSIVE' THEN
+		SET pret = pret + (200*nr_persoane);
+	END IF;
+    
+    IF transport = 'INDIVIDUAL' THEN
+		SET pret = pret - (50*nr_persoane);
+	END IF;
+    
+    SET pret = pret * ((100-discount)/100);
+    
+    UPDATE pachet SET pret_final = pret WHERE id = id_pachet;
+END;
+//
+DELIMITER ;     
+
+CALL actualizeaza_pret(1);
+	
+-- pret total: nume client, cat a platit pe pachete pana acum 
+
+DELIMITER //
+CREATE PROCEDURE pret_total(IN nume_complet VARCHAR(100), OUT pret INT)
+BEGIN
+	SELECT SUM(pret_final) INTO pret
+    FROM pachet JOIN client ON client.id = pachet.id_client
+    WHERE CONCAT(nume, ' ', prenume) = nume_complet;
+END;
+//
+DELIMITER ;
+
+CALL pret_total('Pittman Ian', @pret_pachete);
+SELECT @pret_pachete;
+
+create table platit_integral(
+	id int not null primary key auto_increment,
+    id_pachet int not null,
+    nume_client varchar(100) not null,
+    nume_sejur varchar(50) not null,
+    data_inceput date not null,
+    foreign key(id_pachet) references pachet(id)
+);
+
+DELIMITER //
+CREATE PROCEDURE populeaza_platit_integral()
+BEGIN
+	DECLARE id_pachet INT;
+    DECLARE nume_client VARCHAR(50);
+    DECLARE nume_sejur VARCHAR(50);
+    DECLARE data_inceput DATE;
+    DECLARE avans TINYINT;
+    
+    DECLARE ok TINYINT DEFAULT 1;
+    DECLARE cursor_pachete CURSOR FOR
+		SELECT pachet.id, CONCAT(nume, ' ', prenume), denumire, sejur.data_inceput, plata.avans
+        FROM pachet, sejur, client, plata
+        WHERE 
+        pachet.id = plata.id_pachet AND
+        sejur.id = pachet.id_sejur AND
+        client.id = pachet.id_client;
+	DECLARE CONTINUE HANDLER FOR NOT FOUND SET ok = 0;
+    OPEN cursor_pachete;
+    
+    TRUNCATE platit_integral;
+    pachete: LOOP
+		FETCH cursor_pachete INTO id_pachet, nume_client, nume_sejur, data_inceput, avans;
+        IF ok = 0 THEN
+			LEAVE pachete;
+		ELSE
+			IF avans = 100 THEN
+				INSERT INTO platit_integral VALUES(NULL, id_pachet, nume_client, nume_sejur, data_inceput);
+			END IF;
+        END IF;
+    END LOOP pachete;
+    
+    CLOSE cursor_pachete;
+END;
+//
+DELIMITER ;
+
+CALL populeaza_platit_integral();
+SELECT * FROM platit_integral;
+
+
+
+
+
+
+
+
+-- lista cu sejur:ghid->pret pentru un anumit tip de sejur, unde pretul este cu 10% mai mic daca ghidul este incepator
+DELIMITER //
+CREATE FUNCTION lista_sejur(tip VARCHAR(50)) RETURNS TEXT
+BEGIN
+	DECLARE nume_ghid VARCHAR(100);
+    DECLARE sejur VARCHAR(50);
+    DECLARE pret INT;
+    DECLARE experienta VARCHAR(50);
+    DECLARE detalii_sejur VARCHAR(300);
+    DECLARE rezultat TEXT;
+    DECLARE ok TINYINT DEFAULT 1;
+    
+    DECLARE cursor_sejururi CURSOR FOR
+		SELECT CONCAT(nume, ' ', prenume), nivel_experienta, pret_final, denumire
+        FROM ghid, sejur, pachet
+        WHERE 
+        ghid.id = sejur.id_ghid AND
+        sejur.id = pachet.id_sejur AND
+        sejur.tip = tip;
+	DECLARE CONTINUE HANDLER FOR NOT FOUND SET ok = 0;
+    OPEN cursor_sejururi;
+    sejururi: LOOP
+		FETCH cursor_sejururi INTO nume_ghid, experienta, pret, sejur;
+        IF ok = 0 THEN
+			LEAVE sejururi;
+		ELSE
+			IF experienta = 'INCEPATOR' THEN
+				SET pret = pret*0.9;
+			END IF;
+            SET detalii_sejur = CONCAT(sejur, ': ', nume_ghid, '->', pret);
+            SET rezultat = CONCAT_WS('//', rezultat, detalii_sejur);
+        END IF;
+    END LOOP sejururi;
+    CLOSE cursor_sejururi;
+    
+    RETURN rezultat;
+END;
+//
+DELIMITER ;
+
+SELECT lista_sejur('EXCURSIE');
+-- Zakynthos: Brown Zeus->2736//Zakynthos: Brown Zeus->1296//Zakynthos: Brown Zeus->648//Zakynthos: Brown Zeus->1325//Zakynthos: Brown Zeus->3384//Zakynthos: Brown Zeus->1325//Bansko: Brown Zeus->1720//Bansko: Brown Zeus->2898//Croatia: Avery Riley->580//Croatia: Avery Riley->2930//Croatia: Avery Riley->599//Croatia: Avery Riley->2993//Croatia: Avery Riley->1701
+
+
+-- lista cu client->nume sejur, pentru un tip de sejur daca nr persoane este mai mare de x//nr persoane se verifica in cursor
+DELIMITER //
+CREATE FUNCTION client_sejur(tip_sejur VARCHAR(50), nr_pers TINYINT) RETURNS TEXT
+BEGIN
+	DECLARE client VARCHAR(100);
+    DECLARE sejur VARCHAR(50);
+    DECLARE nr TINYINT;
+    DECLARE rezultat TEXT;
+    DECLARE ok TINYINT DEFAULT 1;
+    DECLARE cursor_clienti CURSOR FOR
+		SELECT CONCAT(nume, ' ', prenume), denumire, nr_persoane
+        FROM client JOIN pachet ON client.id = pachet.id_client JOIN sejur ON sejur.id = pachet.id_sejur
+        WHERE tip = tip_sejur;
+	DECLARE CONTINUE HANDLER FOR NOT FOUND SET ok = 0;
+    
+    OPEN cursor_clienti;
+    clienti: LOOP
+		FETCH cursor_clienti INTO client, sejur, nr;
+        IF ok = 0 THEN
+			LEAVE clienti;
+		ELSE 
+			IF nr > nr_pers THEN
+				SET rezultat = CONCAT_WS('//', rezultat, CONCAT(client, '->', sejur));
+			END IF;
+		END IF;
+    END LOOP clienti;
+    
+    CLOSE cursor_clienti;
+    RETURN rezultat;
+END;
+//
+DELIMITER ;
+
+SELECT client_sejur('EXCURSIE', 3);
+-- Estes Brian->Bansko//Wilder Damian->Croatia//Wilder Damian->Zakynthos//Glass Cooper->Zakynthos//Spears Lawrence->Croatia
+
+
+
+create table log_sejur(
+	id int not null primary key auto_increment,
+    id_sejur int not null,
+    eveniment varchar(100) not null,
+    detalii text,
+    foreign key(id_sejur) references sejur(id)
+); 
+
+
+
+-- dupa update de ghid facem insert in log_sejur: ghid schimbat, ghid vechi -> ghid nou
+DELIMITER //
+CREATE OR REPLACE TRIGGER au_sejur AFTER UPDATE
+ON sejur FOR EACH ROW
+BEGIN
+	DECLARE ghid_vechi VARCHAR(100);
+	DECLARE ghid_nou VARCHAR(100);
+    IF OLD.id_ghid != NEW.id_ghid THEN
+		SELECT CONCAT(nume, ' ', prenume) INTO ghid_vechi FROM ghid WHERE id = OLD.id_ghid;
+		SELECT CONCAT(nume, ' ', prenume) INTO ghid_nou FROM ghid WHERE id = NEW.id_ghid;
+        INSERT INTO log_sejur VALUES(NULL, NEW.id, 'ghid schimbat', CONCAT(ghid_vechi, ' -> ', ghid_nou));
+	END IF;
+END;
+//
+DELIMITER ;
+UPDATE sejur SET id_ghid = 1 WHERE id = 3;
+SELECT * FROM log_sejur;
+-- inainte de insert verificam daca mai sunt locuri disponibile si daca nu dam eroare
+DELIMITER //
+CREATE TRIGGER bi_pachet BEFORE INSERT
+ON pachet FOR EACH ROW
+BEGIN
+	DECLARE nr_locuri TINYINT;
+    DECLARE locuri_ocupate TINYINT;
+    DECLARE eroare TEXT;
+    
+    SELECT locuri_disponibile INTO nr_locuri FROM sejur WHERE id = NEW.id_sejur;
+    SELECT SUM(nr_persoane) INTO locuri_ocupate FROM pachet WHERE pachet.id_sejur = NEW.id_sejur;
+    
+    IF NEW.nr_persoane > (nr_locuri - locuri_ocupate) THEN
+		SET eroare = CONCAT('mai sunt doar ', nr_locuri - locuri_ocupate, ' locuri disponibile');
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = eroare;
+	END IF;
+END;
+//
+DELIMITER ;
+
+INSERT INTO pachet (data_achizitie,masa,transport,nr_persoane,discount,asigurare,id_client,id_sejur) 
+VALUES ("2021-07-02 ","MIC DEJUN","AUTOCAR",1,6,"1",10,5);
+
+-- inainte de a sterge un ghid punem in sejur id_ghid = null
+DELETE FROM ghid WHERE id = 12;
+DELIMITER //
+CREATE TRIGGER bd_ghid BEFORE DELETE
+ON ghid FOR EACH ROW
+BEGIN
+	UPDATE sejur SET id_ghid = NULL WHERE id_ghid = OLD.id;
+END;
+//
+DELIMITER ;
+
+DELETE FROM ghid WHERE id = 12;
+SELECT * FROM sejur;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
